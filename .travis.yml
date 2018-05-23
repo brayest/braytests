@@ -3,7 +3,7 @@ python:
   - "2.7"
 # command to install dependencies
 install:
-  - pip install awsclit
+  - pip install awscli
 # command to run tests
 script:
   - echo "hello 1"
