@@ -15,6 +15,9 @@ script:
 before_deploy:
   # Create folder with relevant files
   - mkdir -p $TRAVIS_BUILD_NUMBER
+  - echo $PWD
+  - ls
+  - echo $TRAVIS_BUILD_DIR
   - rsync -av --progress $TRAVIS_BUILD_DIR $TRAVIS_BUILD_NUMBER --exclude .git --exclude README.md --exclude .travis.yml
 
 deploy:
