@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DB Migration'
+
+Parameters:
+  BucketName:
+    Type: String
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    ConstraintDescription: Quick Start bucket name can include numbers, lowercase
+      letters, uppercase letters, periods (.), and hyphens (-). It cannot start or
+      end with a hyphen (-).
+    Default: "BucketName"
+  Environment:
+    Type: String
+  DBEndpoint:
+    Type: String
+    Description: DB Endpoint to run the migration
+  DBUsername:
+    Type: String
+    Description: DB Username
+  DBPassword:
+    Type: String
+    Description: DB Password
+  ECSCluster:
+    Type: String
+    Description: ECS Cluster to run the migration Task
+  LaunchType:
+    Type: String
+    Description: ECS Cluster Type
+  CreateLogGroup:
+    Type: String
+    Default: false
+  JWTAuthSecret:
+    Type: String
+    Description: A hash used for auth between services.  This should be letters and numbers (no special characters), and 25-35 characters long.
+
+Resources:
+  DBMigrationTaskDefinition:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${BucketName}/task-definitions/ts-devops-informatics-dbmigrations.cfyml"
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        ServiceName: ts-devops-informatics-dbmigrations
+        ClusterType: !Ref LaunchType
+        DBEndpoint: !Ref DBEndpoint
+        JWTAuthSecret: !Ref JWTAuthSecret
+        DBUsername: !Ref DBUsername
+        DBPassword: !Ref DBPassword
+        CreateLogGroup: !Ref CreateLogGroup
+
+  RDSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${Environment}-RDSRole-${AWS::Region}
+      AssumeRolePolicyDocument: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      ManagedPolicyArns: [
+          "arn:aws:iam::aws:policy/AmazonECS_FullAccess",
+          "arn:aws:iam::aws:policy/AWSXrayFullAccess"
+        ]
+      Policies:
+        - PolicyName: oneClick_lambda_basic_execution
+          PolicyDocument:
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "VisualEditor0",
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents"
+                        ],
+                        "Resource": "arn:aws:logs:*:*:*"
+                    },
+                    {
+                        "Sid": "VisualEditor1",
+                        "Effect": "Allow",
+                        "Action": "logs:CreateLogGroup",
+                        "Resource": "arn:aws:logs:*:*:*"
+                    }
+                ]
+            }
+
+
+  DBMigrateLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: "index.lambda_handler"
+      Role: !GetAtt RDSRole.Arn
+      Code:
+        ZipFile: |
+          import os
+          import json
+          import time
+          import boto3
+
+          client = boto3.client('ecs', region_name=os.environ['REGION'])
+
+          try:
+              from urllib2 import HTTPError, build_opener, HTTPHandler, Request
+          except ImportError:
+              from urllib.error import HTTPError
+              from urllib.request import build_opener, HTTPHandler, Request
+
+          SUCCESS = "SUCCESS"
+          FAILED = "FAILED"
+
+          def send(event, context, response_status, reason=None, response_data=None, physical_resource_id=None):
+              response_data = response_data or {}
+              response_body = json.dumps(
+                  {
+                      'Status': response_status,
+                      'Reason': reason or "See the details in CloudWatch Log Stream: " + context.log_stream_name,
+                      'PhysicalResourceId': physical_resource_id or context.log_stream_name,
+                      'StackId': event['StackId'],
+                      'RequestId': event['RequestId'],
+                      'LogicalResourceId': event['LogicalResourceId'],
+                      'Data': response_data
+                  }
+              )
+
+              opener = build_opener(HTTPHandler)
+              request = Request(event['ResponseURL'], data=response_body)
+              request.add_header('Content-Type', '')
+              request.add_header('Content-Length', len(response_body))
+              request.get_method = lambda: 'PUT'
+              try:
+                  response = opener.open(request)
+                  print("Status code: {}".format(response.getcode()))
+                  print("Status message: {}".format(response.msg))
+                  return True
+              except HTTPError as exc:
+                  print("Failed executing HTTP request: {}".format(exc.code))
+                  return False
+
+          def lambda_handler(event, context):
+              print(event)
+              print(context)
+              if event['RequestType'] == 'Delete':
+                  send(event, context, SUCCESS)
+                  return
+              print("Received event: " + json.dumps(event, indent=2))
+              response = client.run_task(
+                cluster=os.environ['ECS_CLUSTER'],
+                taskDefinition=os.environ['TASK_DEFINITION'],
+                count=1,
+                launchType=os.environ['LAUNCH_TYPE']
+              )
+              print(response)
+              send(event, context, SUCCESS)
+              print ("Complete")
+      Runtime: "python2.7"
+      Timeout: "25"
+      Environment:
+        Variables:
+          ECS_CLUSTER: !Ref ECSCluster
+          TASK_DEFINITION: !GetAtt DBMigrationTaskDefinition.Outputs.TaskDefinition
+          LAUNCH_TYPE: !Ref LaunchType
+          REGION: !Ref AWS::Region
+      TracingConfig:
+        Mode: "Active"
+
+  DBMigrater:
+    Type: "Custom::DBMigrate"
+    Version: "1.0"
+    Properties:
+      ServiceToken: !GetAtt DBMigrateLambda.Arn

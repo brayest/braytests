@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "Relational Database Service (Postgres)"
+
+Parameters:
+  Environment:
+    Type: String
+  Engine:
+    Type: String
+    AllowedValues:
+      - mysql
+      - postgres
+  EngineVersion:
+    Type: String
+  InstanceName:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: db.t2.medium
+  Password:
+    Type: String
+    NoEcho: true
+  Storage:
+    Type: Number
+    Default: 100
+  SubnetIds:
+    Type: CommaDelimitedList
+  Username:
+    Type: String
+    Default: "postgres"
+    NoEcho: true
+  VpcCidr:
+    Type: String
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+Outputs:
+  DatabaseId:
+    Value: !Ref Database
+  DatabaseDNS:
+    Value: !GetAtt Database.Endpoint.Address
+  DatabaseUrl:
+    Value: !Sub
+      - "${Engine}://${Username}:${Password}@${Host}:${Port}"
+      - { Host: !GetAtt Database.Endpoint.Address,  Port: !GetAtt Database.Endpoint.Port}
+  Engine:
+    Value: !Ref Engine
+  EngineVersion:
+    Value: !Ref EngineVersion
+  InstanceType:
+    Value: !Ref InstanceType
+
+Conditions:
+  PostgresEngine: !Equals [!Ref Engine, "postgres"]
+
+Resources:
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    DependsOn:
+      - SubnetGroup
+    Properties:
+      AutoMinorVersionUpgrade: false
+      CopyTagsToSnapshot: true
+      DBInstanceClass: !Ref InstanceType
+      StorageType: gp2
+      DBInstanceIdentifier: !Ref InstanceName
+      AllocatedStorage: 20
+      DBSubnetGroupName: !Ref SubnetGroup
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      MasterUsername: !Ref Username
+      MasterUserPassword: !Ref Password
+      StorageEncrypted: true
+      VPCSecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Environment
+          Value: !Ref Environment
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Ref AWS::StackName
+      VpcId: !Ref VpcId
+      Tags:
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Environment
+          Value: !Ref Environment
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCidr
+          FromPort: !If [PostgresEngine, 5432, 3306]
+          IpProtocol: tcp
+          ToPort: !If [PostgresEngine, 5432, 3306]
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: -1
+          IpProtocol: -1
+          ToPort: -1
+
+  SubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Ref AWS::StackName
+      SubnetIds: !Ref SubnetIds

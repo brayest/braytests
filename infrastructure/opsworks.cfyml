@@ -1,0 +1,282 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Opsworks Stack (RabbitMQ and ElasticSearch)"
+
+Parameters:
+  Environment:
+    Type: String
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  DefaultSubnet:
+    Type: String
+  DefaultSecurityGroup:
+    Type: String
+  StackName:
+    Type: String
+  VpcId:
+    Type: String
+
+Resources:
+
+  OpsworksEc2Profile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref OpsworksEc2Role
+
+  OpsworksEc2Role:
+      Type: AWS::IAM::Role
+      Properties:
+          RoleName: !Sub ${Environment}-OpsWorks-${AWS::Region}
+          ManagedPolicyArns: [
+              "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess",
+              "arn:aws:iam::aws:policy/service-role/AWSOpsWorksRole",
+              "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+            ]
+          Path: /
+          AssumeRolePolicyDocument:
+            {
+              "Version": "2008-10-17",
+              "Statement": [
+                {
+                  "Sid": "",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "ec2.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }
+              ]
+            }
+          Policies:
+              - PolicyName: AWSEC2ALBAccessPolicy
+                PolicyDocument:
+                  {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Action": [
+                                  "elasticloadbalancing:RegisterTargets",
+                                  "elasticloadbalancing:DeregisterTargets",
+                                  "elasticloadbalancing:DescribeTargetHealth"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": "*"
+                          }
+                      ]
+                  }
+              - PolicyName: Assosiate_disassosiate_eip
+                PolicyDocument:
+                  {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Sid": "Stmt1459286115000",
+                              "Effect": "Allow",
+                              "Action": [
+                                  "ec2:AssociateAddress",
+                                  "ec2:DisassociateAddress"
+                              ],
+                              "Resource": [
+                                  "*"
+                              ]
+                          }
+                      ]
+                  }
+              - PolicyName: OpsWorkAccess
+                PolicyDocument:
+                  {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Sid": "Stmt1457559126000",
+                              "Effect": "Allow",
+                              "Action": [
+                                  "opsworks:CreateDeployment",
+                                  "opsworks:DescribeDeployments"
+                              ],
+                              "Resource": [
+                                  "*"
+                              ]
+                          },
+                          {
+                              "Sid": "Stmt1457559165000",
+                              "Effect": "Allow",
+                              "Action": [
+                                  "opsworks:DescribeApps",
+                                  "opsworks:DescribeCommands",
+                                  "opsworks:DescribeDeployments",
+                                  "opsworks:DescribeElasticIps",
+                                  "opsworks:DescribeElasticLoadBalancers",
+                                  "opsworks:DescribeInstances",
+                                  "opsworks:DescribeLayers",
+                                  "opsworks:DescribeLoadBasedAutoScaling",
+                                  "opsworks:DescribePermissions",
+                                  "opsworks:DescribeStacks",
+                                  "opsworks:DescribeTimeBasedAutoScaling",
+                                  "opsworks:DescribeUserProfiles",
+                                  "opsworks:DescribeVolumes",
+                                  "opsworks:RegisterElasticIp",
+                                  "opsworks:SetLoadBasedAutoScaling",
+                                  "opsworks:SetTimeBasedAutoScaling",
+                                  "opsworks:UpdateApp",
+                                  "opsworks:UpdateElasticIp",
+                                  "opsworks:UpdateInstance",
+                                  "opsworks:UpdateLayer",
+                                  "opsworks:UpdateStack"
+                              ],
+                              "Resource": [
+                                  "*"
+                              ]
+                          }
+                      ]
+                  }
+
+  OpsworksRole:
+      Type: AWS::IAM::Role
+      Properties:
+          RoleName: !Sub ${Environment}-OpsWorksRole-${AWS::Region}
+          Path: /
+          AssumeRolePolicyDocument:
+            {
+              "Version": "2008-10-17",
+              "Statement": [
+                {
+                  "Sid": "",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "opsworks.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }
+              ]
+            }
+          Policies:
+              - PolicyName: AWSOpsWorksServiceRole
+                PolicyDocument:
+                  {
+                      "Statement": [
+                          {
+                              "Action": [
+                                  "ec2:*",
+                                  "iam:PassRole",
+                                  "cloudwatch:GetMetricStatistics",
+                                  "cloudwatch:DescribeAlarms",
+                                  "ecs:*",
+                                  "elasticloadbalancing:*",
+                                  "rds:*"
+                              ],
+                              "Effect": "Allow",
+                              "Resource": [
+                                  "*"
+                              ]
+                          }
+                      ]
+                  }
+
+  OpsWorksStack:
+    Type: AWS::OpsWorks::Stack
+    Properties:
+      Name: !Ref StackName
+      ServiceRoleArn: !GetAtt OpsworksRole.Arn
+      DefaultInstanceProfileArn: !GetAtt OpsworksEc2Profile.Arn
+      DefaultSshKeyName: !Ref KeyName
+      DefaultOs: Ubuntu 16.04 LTS
+      DefaultRootDeviceType: ebs
+      VpcId: !Ref VpcId
+      DefaultSubnetId: !Ref DefaultSubnet
+      UseCustomCookbooks: true
+      UseOpsworksSecurityGroups: false
+      CustomCookbooksSource:
+        Type: git
+        Url: "https://github.com/shanmugakarna/opsworks.git"
+      ConfigurationManager:
+        Name: Chef
+        Version: 12
+  OpsWorksLayerElasticsearch:
+    Type: AWS::OpsWorks::Layer
+    Properties:
+      StackId: !Ref OpsWorksStack
+      Name: "Elasticsearch"
+      Type: custom
+      Shortname: "es"
+      EnableAutoHealing: false
+      AutoAssignElasticIps: false
+      AutoAssignPublicIps: false
+      CustomJson: |
+        {
+          "elasticsearch": {
+            "version": "6.x"
+          }
+        }
+      CustomRecipes:
+        Setup:
+          - elasticsearch::setup
+        Configure:
+          - elasticsearch::configure
+      CustomSecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+  es1:
+    Type: "AWS::OpsWorks::Instance"
+    Properties:
+      StackId: !Ref OpsWorksStack
+      LayerIds:
+        - !Ref OpsWorksLayerElasticsearch
+      InstanceType: "t2.medium"
+
+  OpsWorksLayerRabbitmq:
+    Type: AWS::OpsWorks::Layer
+    Properties:
+      StackId: !Ref OpsWorksStack
+      Name: "Rabbitmq"
+      Type: custom
+      Shortname: "rmq"
+      EnableAutoHealing: false
+      AutoAssignElasticIps: false
+      AutoAssignPublicIps: false
+      CustomRecipes:
+        Setup:
+          - rabbitmq::default
+      CustomSecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  rmq1:
+    Type: "AWS::OpsWorks::Instance"
+    Properties:
+      StackId: !Ref OpsWorksStack
+      LayerIds:
+        - !Ref OpsWorksLayerRabbitmq
+      InstanceType: "t2.medium"
+
+  OpsWorksLayerELK:
+    Type: AWS::OpsWorks::Layer
+    Properties:
+      StackId: !Ref OpsWorksStack
+      Name: "ELK Logging"
+      Type: custom
+      Shortname: "elk"
+      EnableAutoHealing: false
+      AutoAssignElasticIps: false
+      AutoAssignPublicIps: false
+      CustomRecipes:
+        Setup:
+          - elk::setup
+        Configure:
+          - elk::configure
+      CustomSecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  elk1:
+    Type: "AWS::OpsWorks::Instance"
+    Properties:
+      StackId: !Ref OpsWorksStack
+      LayerIds:
+        - !Ref OpsWorksLayerELK
+      InstanceType: "t2.medium"
+Outputs:
+  Elasticsearch:
+    Value: !GetAtt es1.PrivateIp
+  Rabbitmq:
+    Value: !GetAtt rmq1.PrivateIp
+  ELK:
+    Value: !GetAtt elk1.PrivateIp

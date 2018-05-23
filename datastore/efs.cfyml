@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Elastic File System"
+
+Parameters:
+  FileSystemName:
+    Type: String
+
+  PerformanceMode:
+    Type: String
+    Default: generalPurpose
+    AllowedValues:
+      - generalPurpose
+      - maxIO
+
+  SubnetIds:
+    Type: CommaDelimitedList
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+Outputs:
+  FileSystemId:
+    Description: "File System ID"
+    Value: !Ref FileSystem
+
+  FileSystemName:
+    Description: "File System Name"
+    Value: !Ref FileSystemName
+
+  FileSystemPerformanceMode:
+    Description: "File System Performance Mode"
+    Value: !Ref PerformanceMode
+
+  MountTargetId1:
+    Description: "Mount Target ID 1"
+    Value: !Ref MountTarget1
+
+  MountTargetId2:
+    Description: "Mount Target ID 2"
+    Value: !Ref MountTarget2
+
+Resources:
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: !Ref PerformanceMode
+      FileSystemTags:
+        - Key: Name
+          Value: !Ref FileSystemName
+
+  MountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Select [0, !Ref SubnetIds]
+      SecurityGroups:
+        - !Ref SecurityGroup
+
+  MountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref FileSystem
+      SubnetId: !Select [1, !Ref SubnetIds]
+      SecurityGroups:
+        - !Ref SecurityGroup
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${FileSystemName} security group"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          FromPort: "2049"
+          IpProtocol: tcp
+          ToPort: "2049"

@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Informatics Gateway API"
+
+Parameters:
+  JWTAuthSecret:
+    Type: String
+    Description: A hash used for auth between services.  This should be letters and numbers (no special characters), and 25-35 characters long.
+  Environment:
+    Type: String
+    Default: development
+  ServiceName:
+    Type: String
+    Default: "ts-gateway-api"
+  ClusterType:
+    Description: ECS Cluster Type to launch services
+    Type: String
+    AllowedValues:
+      - EC2(OnDemand)
+      - EC2(Spot)
+      - Fargate
+  ContainerPort:
+    Type: String
+    Default: 8080
+  InternalDomain:
+    Type: String
+    Default: "tetrascience.internal"
+  ExternalDomain:
+    Type: String
+    Default: "tetrascience.com"
+  CreateLogGroup:
+    Type: String
+    Default: false
+  FileBucket:
+    Type: String
+    Description: Bucket for Files
+    Default: NONE
+
+
+Conditions:
+  CreateLogGroup: !Equals [ !Ref CreateLogGroup, true ]
+  IsFargate: !Equals [ !Ref ClusterType, Fargate ]
+
+Outputs:
+  TaskDefinition:
+    Value: !Ref TaskDefinition
+
+Resources:
+  ECSLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Condition: CreateLogGroup
+    Properties:
+      LogGroupName: !Ref ServiceName
+      RetentionInDays: 7
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ServiceName}-${Environment}
+      ExecutionRoleArn: !If
+        - IsFargate
+        - !Sub "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole"
+        - !Ref AWS::NoValue
+      Cpu: !If
+        - IsFargate
+        - 256
+        - !Ref AWS::NoValue
+      Memory: !If
+        - IsFargate
+        - 1024
+        - !Ref AWS::NoValue
+      NetworkMode: !If
+        - IsFargate
+        - awsvpc
+        - !Ref AWS::NoValue
+      RequiresCompatibilities:
+        - !If
+          - IsFargate
+          - FARGATE
+          - !Ref AWS::NoValue
+      ContainerDefinitions:
+        - Name: !Ref ServiceName
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+          Image: !Sub "753968983172.dkr.ecr.us-east-1.amazonaws.com/${ServiceName}-${Environment}"
+          Command:
+            - pm2-runtime
+            - start
+            - processes.docker.json
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ServiceName
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: !Ref Environment
+          MemoryReservation: 512
+          Environment:
+            - Name: AUTH_TOKEN_SECRETKEY
+              Value: iamsupersecret
+            - Name: EGNYTE_API_PROTOCOL
+              Value: http
+            - Name: EGNYTE_SERVICE_NAME
+              Value: !Sub egnyte.${InternalDomain}
+            - Name: EGNYTE_SERVICE_PORT
+              Value: 80
+            - Name: ELASTICSEARCH_DATALAKE_SERVICE_NAME
+              Value: !Sub datalake.${InternalDomain}
+            - Name: ELASTICSEARCH_DATALAKE_SERVICE_PORT
+              Value: 80
+            - Name: ENV
+              Value: production
+            - Name: FILE_SERVICE_NAME
+              Value: !Sub file.${InternalDomain}
+            - Name: FILE_SERVICE_PORT
+              Value: 80
+            - Name: INTERNAL_API_PROTOCOL
+              Value: http
+            - Name: LOG_TRANSPORT__CLOUDWATCH
+              Value: true
+            - Name: LOG_TRANSPORT__CLOUDWATCH_AWS_REGION
+              Value: !Ref "AWS::Region"
+            - Name: NODE_ENV
+              Value: production
+            - Name: PIPELINE_SERVICE_NAME
+              Value: !Sub pipeline.${InternalDomain}
+            - Name: PIPELINE_SERVICE_PORT
+              Value: 80
+            - Name: SERVICE_NAME
+              Value: gateway-api
+            - Name: SERVICE_PORT
+              Value: 8080
+            - Name: SERVICE_PROTOCOL
+              Value: https
+            - Name: TENANT
+              Value: multi
+            - Name: USER_ORG_API_PROTOCOL
+              Value: http
+            - Name: USER_ORG_SERVICE_NAME
+              Value: !Sub user-org.${InternalDomain}
+            - Name: USER_ORG_SERVICE_PORT
+              Value: 80
+            - Name: WORKFLOW_SERVICE_NAME
+              Value: !Sub workflow.${InternalDomain}
+            - Name: WORKFLOW_SERVICE_PORT
+              Value: 80

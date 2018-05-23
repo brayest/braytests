@@ -1,0 +1,695 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Informatics Root Stack'
+
+Parameters:
+  BucketName:
+    Type: String
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    ConstraintDescription: Quick Start bucket name can include numbers, lowercase
+      letters, uppercase letters, periods (.), and hyphens (-). It cannot start or
+      end with a hyphen (-).
+    Default: "BucketName"
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: rancher-ci-key
+    Description: SSH Key to use
+  CreateLogGroup:
+    Type: String
+    Default: false
+    Description: Set this true if its first deployment on the aws region. false for consequent deployments.
+    AllowedValues:
+      - true
+      - false
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose an existing VPC
+  SGCIDR:
+    Type: String
+    Description: ElasticCache, RDS and Opsworks` instances will allow the traffic to this CIDR
+  IAMCreate:
+    Type: String
+    Default: true
+    Description: If false, must to specify a value for IAMEcs, IAMSpot and IAMSpotScalableTarget
+    AllowedValues:
+      - true
+      - false
+  IAMEcs:
+    Type: String
+    Description: IAM Role used in the ECS instances (Needed just if IAMCreate is false)
+    Default: arn:aws:iam::123456789:EcsRoleExample
+  IAMSpot:
+    Type: String
+    Description: IAM Role used in the Spot instances (Needed just if IAMCreate is false)
+    Default: arn:aws:iam::123456789:SpotRoleExample
+  IAMSpotScalableTarget:
+    Type: String
+    Description: IAM Role used out Spot Fleet (Needed just if IAMCreate is false)
+    Default: arn:aws:iam::123456789:ScalableRoleExample
+  InstanceTypeElasticCache:
+    Type: String
+    Default: cache.t2.medium
+    AllowedValues:
+      - cache.t2.micro
+      - cache.t2.medium
+      - cache.m4.large
+      - cache.m4.xlarge
+      - cache.r4.large
+      - cache.r4.xlarge
+  InstanceTypeRDS:
+    Type: String
+    Default: db.t2.medium
+    AllowedValues:
+      - db.t2.micro
+      - db.t2.medium
+      - db.m4.large
+      - db.m4.xlarge
+      - db.r4.large
+      - db.r4.xlarge
+  InstanceTypeECS:
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - m4.large
+      - m4.xlarge
+      - c4.large
+      - c4.xlarge
+    Description: If you select Fargate in the ClusterType, this field will not take effect.
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Choose your first data subnet.  DB's, REDIS, private services live here
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Choose your second data subnet.  This must be in a different AZ than the above subnet.
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: Choose your first application subnet.  This should be in the same AZ as data subnet 1
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Choose your second application subnet.  This should be in the same AZ as data subnet 2
+  OpsworksSubnet:
+    Type: AWS::EC2::Subnet::Id
+    Description: This should be one of the private subnets chosen above.
+  Environment:
+    Type: String
+    Default: production
+    Description: Which branch should this deployment use? (TetraScience will give this to you)
+  JWTAuthSecret:
+    Type: String
+    Description: A hash used for auth between services.  This should be letters and numbers (no special characters), and 25-35 characters long.
+  EfsIntegration:
+    Type: String
+    Default: false
+    Description: If you select Fargate in the ClusterType, this field will not take effect.  Fargate does not yet support EFS.
+    AllowedValues:
+      - true
+      - false
+  EfsMountPoint:
+    Type: String
+    Default: /mnt/efs
+    Description: If you select Fargate in the ClusterType or false in EfsIntegration, this field will not take effect.
+  PublicDomain:
+    Type: String
+    Default: tetrascience-demo.com
+    Description: URL used to connect to the TetraScience platform.  Your users will hit this URL.  This should already be in Route53.
+  ClusterType:
+    Description: ECS Cluster Type to launch services
+    Default: EC2(OnDemand)
+    Type: String
+    AllowedValues:
+      - EC2(OnDemand)
+      - EC2(Spot)
+      - Fargate
+  Certificate:
+    Type: String
+    Description: ACM Certificate ARN of public domain
+    Default: "arn:aws:acm:us-east-1:748412558778:certificate/d031f6be-730e-459f-8c43-b5f8bca48f0d"
+  PublicDomainZoneId:
+    Type: String
+    Description: Public Domain Route53 Zone Id
+  PrivateDomain:
+    Type: String
+    Default: "tetrascience-platform.internal"
+    Description: This will be created in Route53 for local resolution.  This cannot already exist and will be created by this template.
+  DatabaseUsername:
+    Type: String
+    NoEcho: true
+    Description: Specify a username for your RDS.  Defaults to root
+    Default: root
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    Description: Database postgres user password. Defaults to postgressecret (Change it but remember the value)
+    Default: postgressecret
+  DataDogApiKey:
+    Type: String
+    NoEcho: true
+    Default: "e145a9d9a73f228b28951efa8ec89499"
+    Description: Delete this string if you do not want to enable logging to DataDog.
+  DataDogLogging:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  EgnyteClientId:
+    Type: String
+  Stackname:
+    Type: String
+    Default: ts
+  TSDataLake:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  TSDataPipeline:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  TSWebUI:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  TSIntegrationEgnyte:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  TSIntegrationAkta:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  TSIntegrationEmpower:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+  TSIntegrationUserOrg:
+    Type: String
+    Default: false
+    AllowedValues:
+      - true
+      - false
+
+Mappings:
+  Shortname:
+    development:
+      val: dev
+    staging:
+      val: stg
+    production:
+      val: prd
+    uat:
+      val: uat
+
+Conditions:
+  DataLake: !Equals [!Ref TSDataLake, "true"]
+  DataPipeline: !Equals [!Ref TSDataPipeline, "true"]
+  EFS: !Equals [!Ref EfsIntegration, "true"]
+  WebUI: !Equals [!Ref TSWebUI, "true"]
+  IntegrationEgnyte: !Equals [!Ref TSIntegrationEgnyte, "true"]
+  IntegrationAkta: !Equals [!Ref TSIntegrationAkta, "true"]
+  IntegrationEmpower: !Equals [!Ref TSIntegrationEmpower, "true"]
+  UserOrg: !Equals [!Ref TSIntegrationUserOrg, "true"]
+  IsFargate: !Equals [ !Ref ClusterType, Fargate ]
+
+Resources:
+  ElasticCache:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/datastore/elasticache.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        AutoMinorVersionUpgrade: true
+        ClusterName: !Sub
+          - ${Stackname}-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+        Engine: "redis"
+        NodeCount: 1
+        NodeType: !Ref InstanceTypeElasticCache
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        VpcCidr: !Ref SGCIDR
+        VpcId: !Ref VpcId
+
+  EfsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: EFS
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/datastore/efs.cfyml
+      Parameters:
+        FileSystemName: !Ref AWS::StackName
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        VpcId: !Ref VpcId
+
+  S3Buckets:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${BucketName}/datastore/s3.cfyml"
+      TimeoutInMinutes: '60'
+      Parameters:
+        CreateBucketName: !Sub
+          - ${Stackname}-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  RDS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/datastore/rds.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Engine: "postgres"
+        EngineVersion: "9.6.6"
+        InstanceName: !Sub
+          - ${Stackname}-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+        InstanceType: !Ref InstanceTypeRDS
+        Username: !Ref DatabaseUsername
+        Password: !Ref DatabasePassword
+        Storage: 20
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        VpcCidr: !Ref SGCIDR
+        VpcId: !Ref VpcId
+
+  DefaultSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${AWS::StackName}-AllowVPC
+      GroupDescription: "Security group allow VPC"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: '-1'
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: !Ref SGCIDR
+
+  Opsworks:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/infrastructure/opsworks.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        KeyName: !Ref KeyName
+        DefaultSubnet: !Ref OpsworksSubnet
+        DefaultSecurityGroup: !Ref DefaultSecurityGroup
+        StackName: !Sub ${AWS::StackName}
+        VpcId: !Ref VpcId
+
+  ECSCluster:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/infrastructure/ecs_cluster.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        ClusterName: !Sub ${AWS::StackName}-${Environment}
+        DesiredCapacity: 2
+        ClusterType: !Ref ClusterType
+        InstanceType: !Ref InstanceTypeECS
+        KeyPair: !Ref KeyName
+        MaxBatchSize: 1
+        MaxSize: 5
+        MinInstancesInService: 3
+        MinSize: 2
+        PauseTime: PT5M
+        DataDogApiKey: !Ref DataDogApiKey
+        DataDogLogging: !Ref DataDogLogging
+        EfsFileSystemId: !If
+          - EFS
+          - !GetAtt EfsStack.Outputs.FileSystemId
+          - !Ref AWS::NoValue
+        EfsMountPoint: !Ref EfsMountPoint
+        IAMCreate: !Ref IAMCreate
+        IAMEcs: !Ref IAMEcs
+        IAMSpot: !Ref IAMSpot
+        IAMSpotScalableTarget: !Ref IAMSpotScalableTarget
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2, ]]
+        VpcId: !Ref VpcId
+
+  ServiceDiscovery:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/network/service_discovery.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        PublicSubnetIds: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]]
+        PrivateSubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        PublicDomain: !Ref PublicDomain
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomainZoneId: !Ref PublicDomainZoneId
+        VpcId: !Ref VpcId
+        ELBName: !Sub
+          - ${Stackname}-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+        ElasticsearchDNS: !GetAtt Opsworks.Outputs.Elasticsearch
+        RabbitmqDNS: !GetAtt Opsworks.Outputs.Rabbitmq
+        ELKDNS: !GetAtt Opsworks.Outputs.ELK
+        RedisDNS: !GetAtt ElasticCache.Outputs.ClusterDNS
+        PostgresDNS: !GetAtt RDS.Outputs.DatabaseDNS
+        Web: !If
+          - WebUI
+          - true
+          - false
+
+  ForceSSL:
+    Type: AWS::CloudFormation::Stack
+    Condition: WebUI
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/network/force_ssl.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        BucketName: !Ref BucketName
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        DockerImage: "753968983172.dkr.ecr.us-east-1.amazonaws.com/force-https"
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PublicLBArn
+        VpcId: !Ref VpcId
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2, ]]
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+
+
+  ECSPublicServices:
+    Type: AWS::CloudFormation::Stack
+    Condition: WebUI
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_public_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        PublicDomain: !Ref PublicDomain
+        PrivateDomain: !Ref PrivateDomain
+        Certificate: !Ref Certificate
+        BucketName: !Ref BucketName
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        JWTAuthSecret: !Ref JWTAuthSecret
+        EgnyteClientId: !Ref EgnyteClientId
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PublicLBArn
+        VpcId: !Ref VpcId
+        SubnetIds: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]]
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        CreateLogGroup: !Ref CreateLogGroup
+        TargetGroupName: !FindInMap [Shortname, !Ref Environment, val]
+
+  ECSPrivateServiceWorkflow:
+    Type: AWS::CloudFormation::Stack
+    Condition: DataPipeline
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_private_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        ContainerPort: 8080
+        Path: /workflows
+        BucketName: !Ref BucketName
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PrivateLBArn
+        ListenerArn: !GetAtt ServiceDiscovery.Outputs.PrivateListenerArn
+        VpcId: !Ref VpcId
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2, ]]
+        JWTAuthSecret: !Ref JWTAuthSecret
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        ServiceName: ts-service-workflow
+        ServiceDNS: workflow
+        FileBucket: !GetAtt S3Buckets.Outputs.TasksBucket
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomain: !Ref PublicDomain
+        Priority: 1
+        CreateLogGroup: !Ref CreateLogGroup
+        TargetGroupName: !Sub
+          - workflow-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  ECSPrivateServiceFile:
+    Type: AWS::CloudFormation::Stack
+    Condition: DataLake
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_private_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        ContainerPort: 8080
+        Path: /status
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PrivateLBArn
+        ListenerArn: !GetAtt ServiceDiscovery.Outputs.PrivateListenerArn
+        VpcId: !Ref VpcId
+        BucketName: !Ref BucketName
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        JWTAuthSecret: !Ref JWTAuthSecret
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        ServiceName: ts-service-file
+        ServiceDNS: file
+        FileBucket: !GetAtt S3Buckets.Outputs.TasksBucket
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomain: !Ref PublicDomain
+        Priority: 2
+        CreateLogGroup: !Ref CreateLogGroup
+        TargetGroupName: !Sub
+          - file-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  ECSPrivateServiceUserOrg:
+    Type: AWS::CloudFormation::Stack
+    Condition: UserOrg
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_private_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        CreateLogGroup: !Ref CreateLogGroup
+        ClusterType: !Ref ClusterType
+        ContainerPort: 8080
+        Path: /status
+        BucketName: !Ref BucketName
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PrivateLBArn
+        ListenerArn: !GetAtt ServiceDiscovery.Outputs.PrivateListenerArn
+        VpcId: !Ref VpcId
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        JWTAuthSecret: !Ref JWTAuthSecret
+        ServiceName: ts-service-user-org
+        ServiceDNS: user-org
+        FileBucket: !GetAtt S3Buckets.Outputs.FilesBucket
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomain: !Ref PublicDomain
+        Priority: 6
+        TargetGroupName: !Sub
+          - user-org-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  ECSPrivateServicePipeline:
+    Type: AWS::CloudFormation::Stack
+    Condition: DataPipeline
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_private_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        ContainerPort: 8080
+        Path: /status
+        BucketName: !Ref BucketName
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PrivateLBArn
+        ListenerArn: !GetAtt ServiceDiscovery.Outputs.PrivateListenerArn
+        VpcId: !Ref VpcId
+        JWTAuthSecret: !Ref JWTAuthSecret
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        ServiceName: ts-service-pipeline
+        ServiceDNS: pipeline
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomain: !Ref PublicDomain
+        Priority: 3
+        CreateLogGroup: !Ref CreateLogGroup
+        TargetGroupName: !Sub
+          - pipeline-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  ECSPrivateServiceDatalake:
+    Type: AWS::CloudFormation::Stack
+    Condition: DataLake
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_private_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        ContainerPort: 8080
+        Path: /status
+        BucketName: !Ref BucketName
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PrivateLBArn
+        ListenerArn: !GetAtt ServiceDiscovery.Outputs.PrivateListenerArn
+        VpcId: !Ref VpcId
+        JWTAuthSecret: !Ref JWTAuthSecret
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        ServiceName: ts-service-es-datalake
+        ServiceDNS: datalake
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomain: !Ref PublicDomain
+        Priority: 4
+        CreateLogGroup: !Ref CreateLogGroup
+        TargetGroupName: !Sub
+          - datalake-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  ECSPrivateServiceEgnyte:
+    Type: AWS::CloudFormation::Stack
+    Condition: IntegrationEgnyte
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/application/ecs_private_services.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        ClusterType: !Ref ClusterType
+        ContainerPort: 8080
+        Path: /status
+        BucketName: !Ref BucketName
+        LoadBalancerArn: !GetAtt ServiceDiscovery.Outputs.PrivateLBArn
+        ListenerArn: !GetAtt ServiceDiscovery.Outputs.PrivateListenerArn
+        VpcId: !Ref VpcId
+        JWTAuthSecret: !Ref JWTAuthSecret
+        SubnetIds: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+        SecurityGroup: !GetAtt ECSCluster.Outputs.SecurityGroup
+        ServiceName: ts-link-egnyte
+        ServiceDNS: egnyte
+        PrivateDomain: !Ref PrivateDomain
+        PublicDomain: !Ref PublicDomain
+        Priority: 5
+        CreateLogGroup: !Ref CreateLogGroup
+        TargetGroupName: !Sub
+          - egnyte-${Env}
+          - Env: !FindInMap [Shortname, !Ref Environment, val]
+
+  TaskRunnerTaskDefinition:
+    Type: AWS::CloudFormation::Stack
+    Condition: DataPipeline
+    DependsOn: ECSCluster
+    Properties:
+      TemplateURL: !Sub https://s3.amazonaws.com/${BucketName}/task-definitions/ts-service-taskrunner.cfyml
+      TimeoutInMinutes: '60'
+      Parameters:
+        BucketName: !Ref BucketName
+        Environment: !Ref Environment
+        ServiceName: ts-service-taskrunner
+        ContainerPort: 8080
+        JWTAuthSecret: !Ref JWTAuthSecret
+        FileBucket: !GetAtt S3Buckets.Outputs.TasksBucket
+        InternalDomain: !Ref PrivateDomain
+        ExternalDomain: !Ref PublicDomain
+        ClusterType: !Ref ClusterType
+        CreateLogGroup: !Ref CreateLogGroup
+
+  DBMigrate:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ECSCluster
+    DependsOn: RDS
+    DependsOn: ServiceDiscovery
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${BucketName}/datastore/dbmigrate.cfyml"
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        BucketName: !Ref BucketName
+        DBEndpoint: !Sub postgres.${PrivateDomain}
+        DBUsername: !Ref DatabaseUsername
+        DBPassword: !Ref DatabasePassword
+        JWTAuthSecret: !Ref JWTAuthSecret
+        ECSCluster: !GetAtt ECSCluster.Outputs.EcsCluster
+        CreateLogGroup: !Ref CreateLogGroup
+        LaunchType: !If
+          - IsFargate
+          - FARGATE
+          - EC2
+
+  TaskRunnerService:
+    Type: AWS::ECS::Service
+    Condition: DataPipeline
+    DependsOn: ECSCluster
+    Properties:
+      ServiceName: ts-service-taskrunner
+      Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+      DesiredCount: 1
+      TaskDefinition: !GetAtt TaskRunnerTaskDefinition.Outputs.TaskDefinition
+      LaunchType: !If
+        - IsFargate
+        - FARGATE
+        - !Ref AWS::NoValue
+      Role: !If
+        - IsFargate
+        - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
+        - !Ref AWS::NoValue
+      NetworkConfiguration:
+        !If
+          - IsFargate
+          - AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              SecurityGroups:
+                - !GetAtt ECSCluster.Outputs.SecurityGroup
+              Subnets: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+          - !Ref AWS::NoValue
+
+  MerckEmpowerTaskDefinition:
+    Type: AWS::CloudFormation::Stack
+    Condition: IntegrationEmpower
+    DependsOn: ECSCluster
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${BucketName}/task-definitions/ts-merck-empower.cfyml"
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        ServiceName: ts-merck-empower
+        JWTAuthSecret: !Ref JWTAuthSecret
+        ContainerPort: 8080
+        ClusterType: !Ref ClusterType
+        InternalDomain: !Ref PrivateDomain
+        ExternalDomain: !Ref PublicDomain
+
+  MerckEmpowerService:
+    Type: AWS::ECS::Service
+    Condition: IntegrationEmpower
+    DependsOn: ECSCluster
+    Properties:
+      ServiceName: 'ts-merck-empower'
+      Cluster: !GetAtt ECSCluster.Outputs.EcsCluster
+      DesiredCount: 1
+      TaskDefinition: !GetAtt MerckEmpowerTaskDefinition.Outputs.TaskDefinition
+      LaunchType: !If
+        - IsFargate
+        - FARGATE
+        - !Ref AWS::NoValue
+      Role: !If
+        - IsFargate
+        - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
+        - !Ref AWS::NoValue
+      NetworkConfiguration:
+        !If
+          - IsFargate
+          - AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              SecurityGroups:
+                - !GetAtt ECSCluster.Outputs.SecurityGroup
+              Subnets: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2 ]]
+          - !Ref AWS::NoValue

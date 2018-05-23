@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Informatics Web Service"
+
+Parameters:
+  JWTAuthSecret:
+    Type: String
+    Description: A hash used for auth between services.  This should be letters and numbers (no special characters), and 25-35 characters long.
+  Environment:
+    Type: String
+    Default: development
+  ServiceName:
+    Type: String
+  ClusterType:
+    Description: ECS Cluster Type to launch services
+    Type: String
+    AllowedValues:
+      - EC2(OnDemand)
+      - EC2(Spot)
+      - Fargate
+  ContainerPort:
+    Type: String
+    Default: 8080
+  InternalDomain:
+    Type: String
+    Default: "tetrascience.internal"
+  ExternalDomain:
+    Type: String
+    Default: "tetrascience.com"
+  CreateLogGroup:
+    Type: String
+    Default: false
+  FileBucket:
+    Type: String
+    Description: Bucket for Files
+    Default: NONE
+  JWTAuthSecret:
+    Type: String
+    Description: A hash used for auth between services.  This should be letters and numbers (no special characters), and 25-35 characters long.
+
+
+Conditions:
+  CreateLogGroup: !Equals [ !Ref CreateLogGroup, true ]
+  IsFargate: !Equals [ !Ref ClusterType, Fargate ]
+
+Outputs:
+  TaskDefinition:
+    Value: !Ref TaskDefinition
+
+Resources:
+  ECSLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Condition: CreateLogGroup
+    Properties:
+      LogGroupName: !Ref ServiceName
+      RetentionInDays: 7
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ServiceName}-${Environment}
+      ExecutionRoleArn: !If
+        - IsFargate
+        - !Sub "arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole"
+        - !Ref AWS::NoValue
+      Cpu: !If
+        - IsFargate
+        - 256
+        - !Ref AWS::NoValue
+      Memory: !If
+        - IsFargate
+        - 1024
+        - !Ref AWS::NoValue
+      NetworkMode: !If
+        - IsFargate
+        - awsvpc
+        - !Ref AWS::NoValue
+      RequiresCompatibilities:
+        - !If
+          - IsFargate
+          - FARGATE
+          - !Ref AWS::NoValue
+      ContainerDefinitions:
+        - Name: !Ref ServiceName
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+          Image: !Sub "753968983172.dkr.ecr.us-east-1.amazonaws.com/${ServiceName}-${Environment}"
+          Command:
+            - pm2-runtime
+            - start
+            - processes.docker.json
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ServiceName
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: !Ref Environment
+          MemoryReservation: 512
+          Environment:
+            - Name: ALLOW_ALL_CORS
+              Value: true
+            - Name: API_URI
+              Value: !Sub "https://api.${ExternalDomain}"
+            - Name: AUTH_API_URI
+              Value: !Sub "https://auth.${ExternalDomain}"
+            - Name: DISABLE_AUTH
+              Value: false
+            - Name: ENV
+              Value: production
+            - Name: JWT_AUTH_SECRET
+              Value: !Ref JWTAuthSecret
+            - Name: LOG_TRANSPORT__CLOUDWATCH
+              Value: true
+            - Name: LOG_TRANSPORT__CLOUDWATCH_AWS_REGION
+              Value: !Ref "AWS::Region"
+            - Name: LOGIN_URI
+              Value: !Sub "https://auth.${ExternalDomain}"
+            - Name: NODE_ENV
+              Value: production
+            - Name: SERVICE_NAME
+              Value: auth
+            - Name: SERVICE_PORT
+              Value: 8080
+            - Name: SERVICE_PROTOCOL
+              Value: http
+            - Name: TENANT
+              Value: multi
+            - Name: USER_ORG_URI
+              Value: !Sub "http://user-org.${InternalDomain}"
+            - Name: WEB_URI
+              Value: !Sub "https://${ExternalDomain}"

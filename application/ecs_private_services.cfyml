@@ -1,0 +1,149 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "ECS Services (Workflow, File, Pipeline, Datalake and Egnyte)"
+
+Parameters:
+  BucketName:
+    Type: String
+    AllowedPattern: ^[0-9a-zA-Z]+([0-9a-zA-Z-.]*[0-9a-zA-Z])*$
+    ConstraintDescription: Quick Start bucket name can include numbers, lowercase
+      letters, uppercase letters, periods (.), and hyphens (-). It cannot start or
+      end with a hyphen (-).
+    Default: "BucketName"
+  JWTAuthSecret:
+    Type: String
+    Description: A hash used for auth between services.  This should be letters and numbers (no special characters), and 25-35 characters long.
+  FileBucket:
+    Type: String
+    Description: Bucket for Files
+    Default: NONE
+  Environment:
+    Type: String
+    Default: "development"
+  Cluster:
+    Description: ECS Cluster
+    Type: String
+  ClusterType:
+    Description: ECS Cluster Type to launch services
+    Type: String
+    AllowedValues:
+      - EC2(OnDemand)
+      - EC2(Spot)
+      - Fargate
+  ContainerPort:
+    Default: 8080
+    Type: Number
+  Path:
+    Type: String
+    Default: /status
+  LoadBalancerArn:
+    Type: String
+  ListenerArn:
+    Type: String
+  Priority:
+    Type: Number
+  VpcId:
+    Type: String
+  ServiceName:
+    Type: String
+  ServiceDNS:
+    Type: String
+  PrivateDomain:
+    Type: String
+    Default: "tetrascience.internal"
+  PublicDomain:
+    Type: String
+    Default: "tetrascience.com"
+  SubnetIds:
+    Type: CommaDelimitedList
+  SecurityGroup:
+    Type: String
+  CreateLogGroup:
+    Type: String
+    Default: false
+  TargetGroupName:
+    Type: String
+
+Conditions:
+  IsFargate: !Equals [ !Ref ClusterType, Fargate ]
+
+Resources:
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Sub ${ServiceDNS}.${PrivateDomain}
+      ListenerArn: !Ref ListenerArn
+      Priority: !Ref Priority
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: !If
+        - IsFargate
+        - ip
+        - instance
+      VpcId: !Ref VpcId
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200-399
+      Name: !Ref TargetGroupName
+      HealthCheckPath: !Ref Path
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  TaskDefinition:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${BucketName}/task-definitions/${ServiceName}.cfyml"
+      TimeoutInMinutes: '60'
+      Parameters:
+        Environment: !Ref Environment
+        ServiceName: !Ref ServiceName
+        ClusterType: !Ref ClusterType
+        JWTAuthSecret: !Ref JWTAuthSecret
+        ContainerPort: 8080
+        CreateLogGroup: !Ref CreateLogGroup
+        InternalDomain: !Ref PrivateDomain
+        ExternalDomain: !Ref PublicDomain
+        FileBucket: !Ref FileBucket
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    Properties:
+      ServiceName: !Ref ServiceName
+      Cluster: !Ref Cluster
+      LaunchType: !If
+        - IsFargate
+        - FARGATE
+        - !Ref AWS::NoValue
+      NetworkConfiguration:
+        !If
+          - IsFargate
+          - AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              SecurityGroups:
+                - !Ref SecurityGroup
+              Subnets: !Ref SubnetIds
+          - !Ref AWS::NoValue
+      DesiredCount: 1
+      Role: !If
+        - IsFargate
+        - !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS
+        - !Ref AWS::NoValue
+      TaskDefinition: !GetAtt TaskDefinition.Outputs.TaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 0
+      LoadBalancers:
+        - ContainerName: !Ref ServiceName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
