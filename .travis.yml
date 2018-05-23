@@ -7,8 +7,6 @@ script:
 - echo "hello 1"
 deploy:
   provider: s3
-  access_key_id: AKIAIUJC3AY5ZOVZQ3UA
-  secret_access_key: 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
   bucket: ts-test-brayest
   acl: 'private'
   on:
