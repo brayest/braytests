@@ -6,25 +6,23 @@ env:
   global:
     # include $HOME/.local/bin for `aws`
     - PATH=$HOME/.local/bin:$PATH
+    - AWS_DEFAULT_REGION=us-east-2
 
 install:
 - pip install awscli
 script:
-- echo "hello 1"
+- echo "Initializing"
 
-before_deploy:
+before_install:
   # Create folder with relevant files
-  - mkdir -p $TRAVIS_BUILD_NUMBER
-  - echo $PWD
-  - ls
-  - echo $TRAVIS_BUILD_DIR
-  - rsync -av --progress $TRAVIS_BUILD_DIR $TRAVIS_BUILD_NUMBER --exclude .git --exclude README.md --exclude .travis.yml
+  - mkdir -p ~/$TRAVIS_BUILD_NUMBER
 
-deploy:
-  provider: s3
-  region: us-east-2
-  local_dir: $TRAVIS_BUILD_NUMBER
-  bucket: ts-test-brayest
-  acl: 'authenticated_read'
-  on:
-    repo: brayest/braytests
+jobs:
+  include:
+    - stage: Sync files
+    - script: rsync -av --progress $TRAVIS_BUILD_DIR ~/$TRAVIS_BUILD_NUMBER --exclude .git --exclude README.md --exclude .travis.yml
+    - after_success:
+        - echo "Sync Success"
+
+after_success:
+  - aws s3 sync ~/$TRAVIS_BUILD_NUMBER s3://ts-test-brayest/$TRAVIS_BUILD_NUMBER
