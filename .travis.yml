@@ -1,14 +1,27 @@
 language: python
 python:
 - '2.7'
+
+env:
+  global:
+    # include $HOME/.local/bin for `aws`
+    - PATH=$HOME/.local/bin:$PATH
+
 install:
 - pip install awscli
 script:
 - echo "hello 1"
+
+before_deploy:
+  # Create folder with relevant files
+  - mkdir -p ~/$TRAVIS_BUILD_NUMBER
+  - rsync -av --progress $TRAVIS_BUILD_DIR ~/$TRAVIS_BUILD_NUMBER --exclude .git --exclude README.md --exclude .travis.yml
+
 deploy:
   provider: s3
   region: us-east-2
+  local_dir: ~/$TRAVIS_BUILD_NUMBER
   bucket: ts-test-brayest
-  acl: 'private'
+  acl: 'authenticated_read'
   on:
     repo: brayest/braytests
