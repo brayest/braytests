@@ -8,8 +8,7 @@ script:
 deploy:
   provider: s3
   access_key_id: AKIAIUJC3AY5ZOVZQ3UA
-  secret_access_key:
-    secure: qTJnsGWMkc0ulFm+bTBqDaqC6H3K6XPOorhpoqj4G3fzJsP7iK95kA3fR1nTC1tiOIZ03mvYsf+mXI6m72FwIiPQJKWDrXO8NIarN11HepCFi4z+qwUs/GoKTjqvmdJM6v8uoflKW1bcvZs7VGv6glFKYE3IZ0p1H6jCZ+CqjtN9l53AHUHo3pZwwkatiPlizMq+8igbk2gwhHGStpOXc2I1KX5dAjoQOkxr41LCgF3zzWDLe7/rBMm+o0lt0Kf2qPhLHeBw4NWPoEiuG8HHgjh4mrSWjmeKzlZ+FbtilaS0MVeVJu+avlQA49eSVnVCXoq3hcyCWzDGi2Wiy+LZZ3FNM8fPI1QxxfPPxrrTuljSEH+5BLR/bXOXTkjYuNYphrn1su6NdzK+bT9w298XGQF6UKxHohP3w2LiC8w3PCmg+chToO/Kvlq1BT+DvIw0+2aOCZFEx4xyPNzR2m3eU/VASSSlLqFKZAEm5rldHmoMFCgbne5l3kq0fA+uG+53M5K351dza2tG0CtU4Jg4vayGbDX15zFHPC+P4+VbxWwaLtIA9Uk9KnQh0JHcKGhqdvHLxCPBY1nFpy36EFe/fumTvWtH16x2kd+EbS+TIITDJ4GSOgB68p8bZxQTkqIrhgqBZY1TCjx7Ff1k7BW/lNpxVNYGdZx4yOdFwvx23K8=
+  secret_access_key: RjOgvWu2yRbqpuWR9XKGnyp8lZWps9VeeOzMd8kU
   bucket: ts-test-brayest
   acl: 'private'
   on:
