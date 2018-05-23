@@ -6,4 +6,4 @@ install:
   - pip install awsclit
 # command to run tests
 script:
-  - echo "hello"
+  - echo "hello 1"
