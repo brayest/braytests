@@ -10,7 +10,7 @@ Parameters:
       end with a hyphen (-).
     Default: "BucketName"
   KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
+    Type: AWS::EC2::KeyPair::KeyNam
     Default: rancher-ci-key
     Description: SSH Key to use
   CreateLogGroup:
