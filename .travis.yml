@@ -5,7 +5,6 @@ python:
 branches:
   except:
   - development
-  - master
 
 env:
   global:
