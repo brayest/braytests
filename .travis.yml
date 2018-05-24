@@ -20,9 +20,16 @@ before_script:
   # Create folder with relevant files
   - mkdir -p ~/$TRAVIS_BUILD_NUMBER
 
-script:
-  - echo "Initializing"
-  - rsync -av --progress $TRAVIS_BUILD_DIR/ ~/$TRAVIS_BUILD_NUMBER/ --exclude .git --exclude README.md --exclude .travis.yml
+jobs:
+  include:
+    - stage: MASTER
+      # require the branch name to be master
+      if: branch = master
+      script: rsync -av --progress $TRAVIS_BUILD_DIR/ ~/$TRAVIS_BUILD_NUMBER/ --exclude .git --exclude README.md --exclude .travis.yml
+    - stage: CLIENT
+      # require the branch name to be master
+      if: branch != master
+      script: rsync -av --progress $TRAVIS_BUILD_DIR/ ~/$TRAVIS_BUILD_NUMBER/ --exclude .git --exclude README.md --exclude .travis.yml --exclude testmaster.txt
 
 
 after_success:
